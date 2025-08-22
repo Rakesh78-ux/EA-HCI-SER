@@ -1,2 +1,35 @@
+modules = ["python-3.11"]
 [agent]
 expertMode = true
+
+[nix]
+channel = "stable-25_05"
+packages = ["ffmpeg-full", "glibcLocales", "libsndfile", "libxcrypt", "pkg-config", "portaudio", "xsimd"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Speech Emotion Recognition Server"
+
+[[workflows.workflow]]
+name = "Speech Emotion Recognition Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "pip install fastapi uvicorn pydub python-multipart numpy librosa scikit-learn tensorflow keras soundfile matplotlib seaborn pandas && python main.py"
+waitForPort = 5000
+
+[[ports]]
+localPort = 5000
+externalPort = 80

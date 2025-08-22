@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech Emotion Recognition System</title>
+    <link rel="stylesheet" href="static/css/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/feather-icons/4.28.0/feather.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <h1><i data-feather="mic"></i> Speech Emotion Recognition</h1>
+            <p>Real-time emotion detection from audio input</p>
+        </header>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-label">System Status:</span>
+                <span id="system-status" class="status-value">Loading...</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Model:</span>
+                <span id="model-status" class="status-value">Not Ready</span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Live Recording Section -->
+            <section class="card">
+                <div class="card-header">
+                    <h2><i data-feather="radio"></i> Live Recording</h2>
+                </div>
+                <div class="card-content">
+                    <div class="recording-controls">
+                        <button id="start-recording" class="btn btn-primary">
+                            <i data-feather="mic"></i> Start Recording
+                        </button>
+                        <button id="stop-recording" class="btn btn-secondary" disabled>
+                            <i data-feather="square"></i> Stop Recording
+                        </button>
+                        <button id="clear-results" class="btn btn-outline">
+                            <i data-feather="trash-2"></i> Clear Results
+                        </button>
+                    </div>
+                    
+                    <div class="recording-status">
+                        <div id="recording-indicator" class="recording-indicator">
+                            <div class="pulse"></div>
+                            <span>Ready to record</span>
+                        </div>
+                        <div id="audio-level" class="audio-level">
+                            <div class="level-bar">
+                                <div id="level-fill" class="level-fill"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- File Upload Section -->
+            <section class="card">
+                <div class="card-header">
+                    <h2><i data-feather="upload"></i> File Upload</h2>
+                </div>
+                <div class="card-content">
+                    <div class="upload-area" id="upload-area">
+                        <i data-feather="upload-cloud" size="48"></i>
+                        <h3>Drop audio file here or click to upload</h3>
+                        <p>Supports WAV, MP3, M4A, FLAC (max 10MB)</p>
+                        <input type="file" id="file-input" accept=".wav,.mp3,.m4a,.flac" hidden>
+                    </div>
+                    <div id="file-info" class="file-info" style="display: none;">
+                        <div class="file-details">
+                            <span id="file-name"></span>
+                            <span id="file-size"></span>
+                        </div>
+                        <button id="analyze-file" class="btn btn-primary">
+                            <i data-feather="play"></i> Analyze Audio
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Results Section -->
+            <section class="card results-section">
+                <div class="card-header">
+                    <h2><i data-feather="bar-chart-2"></i> Emotion Analysis Results</h2>
+                </div>
+                <div class="card-content">
+                    <div id="results-container">
+                        <div class="no-results">
+                            <i data-feather="info" size="48"></i>
+                            <h3>No analysis results yet</h3>
+                            <p>Record audio or upload a file to see emotion predictions</p>
+                        </div>
+                    </div>
+
+                    <!-- Prediction Display -->
+                    <div id="prediction-display" class="prediction-display" style="display: none;">
+                        <div class="main-prediction">
+                            <div class="predicted-emotion">
+                                <div class="emotion-icon" id="emotion-icon">😐</div>
+                                <div class="emotion-details">
+                                    <h3 id="predicted-emotion-text">Neutral</h3>
+                                    <div class="confidence-score">
+                                        <span>Confidence: </span>
+                                        <span id="confidence-value">0%</span>
+                                        <div class="confidence-bar">
+                                            <div id="confidence-fill" class="confidence-fill"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Probability Chart -->
+                        <div class="chart-container">
+                            <canvas id="emotion-chart"></canvas>
+                        </div>
+
+                        <!-- Detailed Probabilities -->
+                        <div class="probabilities-list" id="probabilities-list">
+                            <!-- Probability bars will be generated here -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Real-time Streaming (WebSocket) -->
+            <section class="card">
+                <div class="card-header">
+                    <h2><i data-feather="activity"></i> Real-time Emotion Monitoring</h2>
+                </div>
+                <div class="card-content">
+                    <div class="streaming-controls">
+                        <button id="start-streaming" class="btn btn-success">
+                            <i data-feather="play"></i> Start Live Monitoring
+                        </button>
+                        <button id="stop-streaming" class="btn btn-danger" disabled>
+                            <i data-feather="pause"></i> Stop Monitoring
+                        </button>
+                    </div>
+                    
+                    <div id="streaming-status" class="streaming-status">
+                        <span>Click "Start Live Monitoring" to begin real-time emotion detection</span>
+                    </div>
+
+                    <!-- Real-time Chart -->
+                    <div class="realtime-chart-container" style="display: none;">
+                        <canvas id="realtime-chart"></canvas>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Loading Overlay -->
+        <div id="loading-overlay" class="loading-overlay" style="display: none;">
+            <div class="loading-content">
+                <div class="spinner"></div>
+                <p id="loading-text">Processing audio...</p>
+            </div>
+        </div>
+
+        <!-- Error Modal -->
+        <div id="error-modal" class="modal" style="display: none;">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3><i data-feather="alert-circle"></i> Error</h3>
+                    <button id="close-error-modal" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p id="error-message">An error occurred</p>
+                </div>
+                <div class="modal-footer">
+                    <button id="error-ok-btn" class="btn btn-primary">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="static/js/audio-recorder.js"></script>
+    <script src="static/js/app.js"></script>
+
+    <script>
+        // Initialize Feather icons
+        feather.replace();
+    </script>
+</body>
+</html>
