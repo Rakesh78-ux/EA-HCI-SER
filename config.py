@@ -25,7 +25,7 @@ class Settings:
     
     # File upload settings
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
-    ALLOWED_EXTENSIONS: List[str] = [".wav", ".mp3", ".m4a", ".flac"]
+    ALLOWED_EXTENSIONS: List[str] = [".wav", ".mp3", ".m4a", ".flac", ".webm", ".ogg"]
     
     # API settings
     API_TIMEOUT: int = 30
