@@ -47,8 +47,21 @@ async def predict_from_file(
         
         # Process audio file
         result = await process_audio_file(file_content, file_ext, return_probabilities)
-        
+
+        # Log full prediction for debugging
+        try:
+            logger.info("PREDICT_FROM_FILE result: predicted=%s confidence=%.4f emotions=%s",
+                    result.get("predicted_emotion"),
+                    float(result.get("confidence", 0.0)),
+                    result.get("emotion_probabilities") or result.get("emotions") or {})
+            if "message" in result:
+                logger.info("PREDICT_FROM_FILE message: %s", result["message"])
+        except Exception:
+            logger.exception("Failed to log prediction result")
+
         return JSONResponse(content=result)
+
+
         
     except HTTPException:
         raise
@@ -75,18 +88,27 @@ async def predict_from_audio_data(
         # Process audio
         processed_audio = audio_processor.preprocess_audio(audio_array, sample_rate)
         
-        # Get prediction
         prediction = emotion_classifier.predict(processed_audio, sample_rate)
-        
+
+        # Log full prediction for debugging
+        try:
+            logger.info("PREDICT_FROM_AUDIO prediction: predicted=%s confidence=%.4f emotions=%s",
+                        prediction.get("predicted_emotion"),
+                        float(prediction.get("confidence", 0.0)),
+                        prediction.get("emotions", {}))
+        except Exception:
+            logger.exception("Failed to log prediction")
+
         # Format response
         response = {
             "predicted_emotion": prediction["predicted_emotion"],
             "confidence": prediction["confidence"],
             "status": prediction.get("status", "success")
         }
-        
+
         if return_probabilities:
-            response["emotion_probabilities"] = prediction["emotions"]
+            response["emotion_probabilities"] = prediction.get("emotions", {})
+
         
         if "message" in prediction:
             response["message"] = prediction["message"]
@@ -185,6 +207,24 @@ async def process_audio_file(file_content: bytes, file_ext: str, return_probabil
                 }
             
             audio_data, sample_rate = audio_result
+
+            # DEBUG LOG — raw audio details from file route
+            try:
+                logger.info(
+                    "ROUTE process_audio_file: received audio samples=%d sample_rate=%s dtype=%s",
+                    len(audio_data),
+                    sample_rate,
+                    getattr(audio_data, "dtype", "unknown")
+                )
+                logger.info(
+                    "ROUTE process_audio_file: audio min/max/mean = %.6f / %.6f / %.6f",
+                    float(audio_data.min()),
+                    float(audio_data.max()),
+                    float(audio_data.mean())
+                )
+            except Exception:
+                logger.exception("Failed to log raw audio stats")
+
             
             # Preprocess audio
             processed_audio = audio_processor.preprocess_audio(audio_data, sample_rate)

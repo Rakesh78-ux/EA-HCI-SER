@@ -11,6 +11,7 @@ class Settings:
     EMOTION_LABELS: List[str] = [
         "neutral", "happy", "sad", "angry", "fear", "disgust", "surprise"
     ]
+    LOW_CONFIDENCE_THRESHOLD = 0.25   # predictions with confidence < 25% flagged low_confidence
     
     # Model settings
     MODEL_PATH: str = "models/trained_model.pkl"
