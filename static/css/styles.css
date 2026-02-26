@@ -425,6 +425,51 @@ body {
     color: #667eea;
 }
 
+/* Speech Transcript */
+.transcript-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.transcript-status {
+    padding: 12px 15px;
+    background: #f8f9fa;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    color: #555;
+}
+
+.transcript-status.active {
+    background: #d4edda;
+    color: #155724;
+}
+
+.transcript-status.unsupported {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.transcript-box {
+    background: #f8f9fa;
+    border-radius: 10px;
+    padding: 16px 18px;
+    min-height: 100px;
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid #e2e6ea;
+}
+
+.transcript-text {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    color: #333;
+}
+
+.transcript-text-placeholder {
+    color: #888;
+}
+
 /* Streaming Controls */
 .streaming-controls {
     display: flex;

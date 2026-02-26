@@ -35,6 +35,12 @@ class SERApp {
         
         this.realtimeData = [];
         this.maxRealtimePoints = 20;
+
+        // Speech-to-text (browser Web Speech API)
+        this.speechRecognition = null;
+        this.isTranscribing = false;
+        this.transcriptText = '';
+        this.sttSupported = false;
     }
 
     /**
@@ -44,6 +50,9 @@ class SERApp {
         try {
             // Initialize UI components
             this.initializeUI();
+            
+            // Initialize speech-to-text (if supported)
+            this.initializeSpeechToText();
             
             // Check system health
             await this.checkSystemHealth();
@@ -79,6 +88,73 @@ class SERApp {
         if (typeof feather !== 'undefined') {
             feather.replace();
         }
+    }
+
+    /**
+     * Initialize browser speech-to-text (Web Speech API)
+     */
+    initializeSpeechToText() {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const statusEl = document.getElementById('transcript-status');
+
+        if (!SpeechRecognition) {
+            this.sttSupported = false;
+            if (statusEl) {
+                statusEl.classList.add('unsupported');
+                statusEl.textContent = 'Speech-to-text is not supported in this browser. Please try Chrome or Edge.';
+            }
+            return;
+        }
+
+        this.sttSupported = true;
+        this.speechRecognition = new SpeechRecognition();
+        this.speechRecognition.continuous = true;
+        this.speechRecognition.interimResults = true;
+        this.speechRecognition.lang = 'en-US';
+
+        this.speechRecognition.onstart = () => {
+            this.isTranscribing = true;
+            if (statusEl) {
+                statusEl.classList.remove('unsupported');
+                statusEl.classList.add('active');
+                statusEl.textContent = 'Listening... recognized text will appear below while you speak.';
+            }
+        };
+
+        this.speechRecognition.onend = () => {
+            // If we still expect to be transcribing (e.g., recording still on), restart
+            if (this.isTranscribing && this.sttSupported && this.speechRecognition) {
+                try {
+                    this.speechRecognition.start();
+                } catch (e) {
+                    // Ignore if already started or cannot restart
+                }
+            } else if (statusEl) {
+                statusEl.classList.remove('active');
+                statusEl.textContent = 'Start a live recording to see the recognized text of your speech.';
+            }
+        };
+
+        this.speechRecognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+        };
+
+        this.speechRecognition.onresult = (event) => {
+            let newText = '';
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                newText += event.results[i][0].transcript + ' ';
+            }
+            if (newText.trim().length === 0) {
+                return;
+            }
+
+            this.transcriptText = (this.transcriptText + ' ' + newText).trim();
+            const textEl = document.getElementById('transcript-text');
+            if (textEl) {
+                textEl.textContent = this.transcriptText;
+                textEl.classList.remove('transcript-text-placeholder');
+            }
+        };
     }
 
     /**
@@ -263,6 +339,7 @@ class SERApp {
             const started = this.audioRecorder.startRecording();
             if (started) {
                 this.updateRecordingUI(true);
+                this.startTranscription();
             }
 
         } catch (error) {
@@ -278,6 +355,44 @@ class SERApp {
         if (this.audioRecorder) {
             this.audioRecorder.stopRecording();
             this.updateRecordingUI(false);
+            this.stopTranscription();
+        }
+    }
+
+    /**
+     * Start speech-to-text transcription (linked to live recording)
+     */
+    startTranscription() {
+        if (!this.sttSupported || !this.speechRecognition) {
+            return;
+        }
+        if (this.isTranscribing) return;
+
+        this.isTranscribing = true;
+        const statusEl = document.getElementById('transcript-status');
+        if (statusEl) {
+            statusEl.classList.add('active');
+            statusEl.textContent = 'Listening... recognized text will appear below while you speak.';
+        }
+        try {
+            this.speechRecognition.start();
+        } catch (e) {
+            console.error('Failed to start speech recognition:', e);
+        }
+    }
+
+    /**
+     * Stop speech-to-text transcription
+     */
+    stopTranscription() {
+        if (!this.sttSupported || !this.speechRecognition) {
+            return;
+        }
+        this.isTranscribing = false;
+        try {
+            this.speechRecognition.stop();
+        } catch (e) {
+            console.error('Failed to stop speech recognition:', e);
         }
     }
 
@@ -798,6 +913,24 @@ class SERApp {
 
         // Reset audio level
         this.updateAudioLevel(0);
+
+        // Reset transcript
+        this.transcriptText = '';
+        const textEl = document.getElementById('transcript-text');
+        const statusEl = document.getElementById('transcript-status');
+        if (textEl) {
+            textEl.textContent = 'Your spoken words will appear here as text when speech-to-text is active.';
+            textEl.classList.add('transcript-text-placeholder');
+        }
+        if (statusEl) {
+            statusEl.classList.remove('active');
+            if (!this.sttSupported) {
+                statusEl.classList.add('unsupported');
+                statusEl.textContent = 'Speech-to-text is not supported in this browser. Please try Chrome or Edge.';
+            } else {
+                statusEl.textContent = 'Start a live recording to see the recognized text of your speech.';
+            }
+        }
     }
 
     /**
