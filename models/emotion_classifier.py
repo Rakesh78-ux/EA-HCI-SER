@@ -9,6 +9,7 @@ from typing import Dict
 import os
 
 from services.feature_extractor import FeatureExtractor
+from services.text_analyzer import TextAnalyzer
 from config import settings
 
 logger = logging.getLogger(__name__)
@@ -19,6 +20,7 @@ class EmotionClassifier:
         self.model = None
         self.scaler = None
         self.feature_extractor = FeatureExtractor()
+        self.text_analyzer = TextAnalyzer()
         self.is_trained = False
 
     def load_model(self):
@@ -111,7 +113,7 @@ class EmotionClassifier:
 
         logger.info("Default model initialized and trained; it should now perform well above random chance.")
 
-    def predict(self, audio_data: np.ndarray, sample_rate: int) -> Dict:
+    def predict(self, audio_data: np.ndarray, sample_rate: int, transcript: str = "") -> Dict:
         """Predict emotion from audio data (with debug logging and extra diagnostics)."""
         try:
             if not self.is_trained:
@@ -165,34 +167,15 @@ class EmotionClassifier:
             if probs_sum <= 0 or np.isclose(probs_sum, 0.0):
                 return self._get_default_prediction("Model probabilities sum to zero")
             probabilities = probabilities / probs_sum
-
-            # Check if predictions are too uniform (model might not be working properly)
-            uniform_threshold = 1.0 / len(probabilities) * 1.1  # 10% tolerance above uniform
-            if np.all(probabilities <= uniform_threshold):
-                logger.warning("Model predictions are too uniform - model may need retraining")
-                # Try to retrain with improved initialization if this keeps happening
-                # For now, we'll continue but log a warning
-
-            # Determine predicted index and confidence
-            predicted_index = int(np.argmax(probabilities))
-            confidence = float(probabilities[predicted_index])
-
-            # Map labels robustly
-            model_labels = getattr(self.model, "classes_", None)
-            if model_labels is not None and len(model_labels) == len(probabilities):
-                # model_labels might be ints (class indices) or strings
-                try:
-                    if all(isinstance(x, (int, np.integer)) for x in model_labels):
-                        predicted_emotion = settings.EMOTION_LABELS[int(model_labels[predicted_index])]
-                    else:
-                        predicted_emotion = str(model_labels[predicted_index])
-                except Exception:
-                    predicted_emotion = settings.EMOTION_LABELS[predicted_index]
-            else:
-                predicted_emotion = settings.EMOTION_LABELS[predicted_index]
+            
+            # --- GET TEXT-BASED EMOTION BOOSTS ---
+            boosts = self.text_analyzer.analyze_text(transcript)
+            logger.info("Got text-based boosts for transcript: %s -> %s", transcript, boosts)
 
             # Build probability dictionary mapping names -> prob
             emotion_probs = {}
+            model_labels = getattr(self.model, "classes_", None)
+            
             if model_labels is not None and len(model_labels) == len(probabilities):
                 for i, lbl in enumerate(model_labels):
                     if isinstance(lbl, (int, np.integer)):
@@ -206,8 +189,27 @@ class EmotionClassifier:
                     name = emotion if i < len(settings.EMOTION_LABELS) else f"label_{i}"
                     emotion_probs[name] = float(probabilities[i])
 
-            logger.info("PREDICTION probs: %s | predicted=%s | conf=%.4f",
-                        emotion_probs, predicted_emotion, confidence)
+            # Apply boosts from text analysis to output probabilities
+            needs_renormalization = False
+            for emotion_name, boost_weight in boosts.items():
+                if boost_weight > 0 and emotion_name in emotion_probs:
+                    emotion_probs[emotion_name] += boost_weight
+                    needs_renormalization = True
+
+            # Re-normalize if affected by text boosts
+            if needs_renormalization:
+                total_prob = sum(emotion_probs.values())
+                if total_prob > 0:
+                    for emotion_name in emotion_probs:
+                        emotion_probs[emotion_name] /= total_prob
+            
+            # Recalculate best prediction
+            best_emotion = max(emotion_probs, key=emotion_probs.get)
+            confidence = emotion_probs[best_emotion]
+            predicted_emotion = best_emotion
+            
+            logger.info("PREDICTION probs: %s | predicted=%s | conf=%.4f | text_applied=%s",
+                        emotion_probs, predicted_emotion, confidence, needs_renormalization)
 
             # If model is uncertain (low confidence), do not silently return neutral — mark as low_confidence
             LOW_CONFIDENCE_THRESHOLD = getattr(settings, "LOW_CONFIDENCE_THRESHOLD", 0.25)

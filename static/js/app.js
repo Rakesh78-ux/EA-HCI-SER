@@ -10,7 +10,7 @@ class SERApp {
         this.realtimeChart = null;
         this.currentFile = null;
         this.isSystemReady = false;
-        
+
         // Emotion icons mapping
         this.emotionIcons = {
             neutral: '😐',
@@ -21,7 +21,7 @@ class SERApp {
             disgust: '🤢',
             surprise: '😲'
         };
-        
+
         // Color scheme for emotions
         this.emotionColors = {
             neutral: '#6c757d',
@@ -32,7 +32,7 @@ class SERApp {
             disgust: '#20c997',
             surprise: '#fd7e14'
         };
-        
+
         this.realtimeData = [];
         this.maxRealtimePoints = 20;
 
@@ -50,22 +50,22 @@ class SERApp {
         try {
             // Initialize UI components
             this.initializeUI();
-            
+
             // Initialize speech-to-text (if supported)
             this.initializeSpeechToText();
-            
+
             // Check system health
             await this.checkSystemHealth();
-            
+
             // Initialize audio recorder
             this.audioRecorder = new AudioRecorder();
-            
+
             // Set up event handlers
             this.setupEventHandlers();
-            
+
             // Initialize charts
             this.initializeCharts();
-            
+
             console.log('SER App initialized successfully');
 
         } catch (error) {
@@ -80,10 +80,10 @@ class SERApp {
     initializeUI() {
         // Update loading status
         this.updateSystemStatus('Initializing...', 'loading');
-        
+
         // Set up file drag and drop
         this.setupFileDragAndDrop();
-        
+
         // Initialize feather icons
         if (typeof feather !== 'undefined') {
             feather.replace();
@@ -140,18 +140,34 @@ class SERApp {
         };
 
         this.speechRecognition.onresult = (event) => {
-            let newText = '';
+            let interimText = '';
+            let finalText = '';
+
             for (let i = event.resultIndex; i < event.results.length; i++) {
-                newText += event.results[i][0].transcript + ' ';
-            }
-            if (newText.trim().length === 0) {
-                return;
+                if (event.results[i].isFinal) {
+                    finalText += event.results[i][0].transcript + ' ';
+                } else {
+                    interimText += event.results[i][0].transcript + ' ';
+                }
             }
 
-            this.transcriptText = (this.transcriptText + ' ' + newText).trim();
+            if (finalText.trim().length > 0) {
+                this.transcriptText = (this.transcriptText + ' ' + finalText).trim();
+
+                // If live streaming is active, send the text immediately for emotion boosting!
+                if (this.audioRecorder && this.audioRecorder.isStreaming) {
+                    this.audioRecorder.sendTranscript(this.transcriptText);
+                }
+            }
+
             const textEl = document.getElementById('transcript-text');
             if (textEl) {
-                textEl.textContent = this.transcriptText;
+                // Display finalized text plus any current interim text
+                let displayText = this.transcriptText;
+                if (interimText.trim().length > 0) {
+                    displayText += (displayText ? ' ' : '') + interimText;
+                }
+                textEl.textContent = displayText || 'Listening...';
                 textEl.classList.remove('transcript-text-placeholder');
             }
         };
@@ -164,7 +180,7 @@ class SERApp {
         try {
             const response = await fetch('/api/health');
             const health = await response.json();
-            
+
             if (health.status === 'healthy') {
                 this.isSystemReady = true;
                 this.updateSystemStatus('Ready', 'healthy');
@@ -210,19 +226,19 @@ class SERApp {
         document.getElementById('start-recording')?.addEventListener('click', () => this.startRecording());
         document.getElementById('stop-recording')?.addEventListener('click', () => this.stopRecording());
         document.getElementById('clear-results')?.addEventListener('click', () => this.clearResults());
-        
+
         // File upload
         document.getElementById('file-input')?.addEventListener('change', (e) => this.handleFileSelect(e));
         document.getElementById('analyze-file')?.addEventListener('click', () => this.analyzeFile());
-        
+
         // Streaming controls
         document.getElementById('start-streaming')?.addEventListener('click', () => this.startStreaming());
         document.getElementById('stop-streaming')?.addEventListener('click', () => this.stopStreaming());
-        
+
         // Modal controls
         document.getElementById('close-error-modal')?.addEventListener('click', () => this.hideError());
         document.getElementById('error-ok-btn')?.addEventListener('click', () => this.hideError());
-        
+
         // Audio recorder callbacks
         if (this.audioRecorder) {
             this.audioRecorder.setDataCallback((blob) => this.handleRecordingData(blob));
@@ -256,7 +272,7 @@ class SERApp {
         uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadArea.classList.remove('dragover');
-            
+
             const files = e.dataTransfer.files;
             if (files.length > 0) {
                 this.handleFileSelection(files[0]);
@@ -281,7 +297,7 @@ class SERApp {
         // Validate file type
         const allowedTypes = ['.wav', '.mp3', '.m4a', '.flac'];
         const fileExtension = '.' + file.name.split('.').pop().toLowerCase();
-        
+
         if (!allowedTypes.includes(fileExtension)) {
             this.showError('Unsupported file format. Please use WAV, MP3, M4A, or FLAC files.');
             return;
@@ -294,13 +310,13 @@ class SERApp {
         }
 
         this.currentFile = file;
-        
+
         // Update UI
         document.getElementById('file-name').textContent = file.name;
         document.getElementById('file-size').textContent = this.formatFileSize(file.size);
         document.getElementById('file-info').style.display = 'flex';
         document.getElementById('upload-area').style.display = 'none';
-        
+
         // Reset file input for re-selection
         document.getElementById('file-input').value = '';
     }
@@ -408,11 +424,11 @@ class SERApp {
 
         if (startBtn) startBtn.disabled = isRecording;
         if (stopBtn) stopBtn.disabled = !isRecording;
-        
+
         if (pulse) {
             pulse.classList.toggle('recording', isRecording);
         }
-        
+
         if (indicatorText) {
             indicatorText.textContent = isRecording ? 'Recording...' : 'Ready to record';
         }
@@ -428,12 +444,15 @@ class SERApp {
         }
 
         this.showLoading('Processing recorded audio...');
-        
+
         try {
             // Create FormData for file upload
             const formData = new FormData();
             formData.append('file', audioBlob, 'recording.webm');
             formData.append('return_probabilities', 'true');
+            if (this.transcriptText) {
+                formData.append('transcript', this.transcriptText);
+            }
 
             // Send to API
             const response = await fetch('/api/predict/file', {
@@ -553,10 +572,10 @@ class SERApp {
 
         if (startBtn) startBtn.disabled = isStreaming;
         if (stopBtn) stopBtn.disabled = !isStreaming;
-        
+
         if (status) {
-            status.textContent = isStreaming ? 
-                'Live monitoring active - emotions are being detected in real-time' : 
+            status.textContent = isStreaming ?
+                'Live monitoring active - emotions are being detected in real-time' :
                 'Click "Start Live Monitoring" to begin real-time emotion detection';
             status.className = isStreaming ? 'streaming-status active' : 'streaming-status';
         }
@@ -574,11 +593,11 @@ class SERApp {
 
         // Update real-time chart
         this.updateRealtimeChart(data);
-        
+
         // Update streaming status
         const confidence = Math.round(data.confidence * 100);
         this.updateStreamingStatus(
-            `Detected: ${data.predicted_emotion} (${confidence}% confidence)`, 
+            `Detected: ${data.predicted_emotion} (${confidence}% confidence)`,
             'active'
         );
     }
@@ -600,7 +619,7 @@ class SERApp {
     displayPredictionResults(result) {
         // Hide no-results message
         document.querySelector('.no-results')?.style.setProperty('display', 'none');
-        
+
         // Show prediction display
         const predictionDisplay = document.getElementById('prediction-display');
         if (predictionDisplay) {
@@ -610,10 +629,10 @@ class SERApp {
 
         // Update main prediction
         this.updateMainPrediction(result);
-        
+
         // Update probability chart
         this.updateEmotionChart(result.emotion_probabilities || result.emotions || {});
-        
+
         // Update probability list
         this.updateProbabilitiesList(result.emotion_probabilities || result.emotions || {});
     }
@@ -624,28 +643,28 @@ class SERApp {
     updateMainPrediction(result) {
         const emotion = result.predicted_emotion || 'neutral';
         const confidence = result.confidence || 0;
-        
+
         // Update emotion icon
         const iconElement = document.getElementById('emotion-icon');
         if (iconElement) {
             iconElement.textContent = this.emotionIcons[emotion] || '😐';
         }
-        
+
         // Update emotion text
         const textElement = document.getElementById('predicted-emotion-text');
         if (textElement) {
             textElement.textContent = emotion.charAt(0).toUpperCase() + emotion.slice(1);
             textElement.style.color = this.emotionColors[emotion] || '#333';
         }
-        
+
         // Update confidence
         const confidenceValue = document.getElementById('confidence-value');
         const confidenceFill = document.getElementById('confidence-fill');
-        
+
         if (confidenceValue) {
             confidenceValue.textContent = Math.round(confidence * 100) + '%';
         }
-        
+
         if (confidenceFill) {
             confidenceFill.style.width = (confidence * 100) + '%';
         }
@@ -662,12 +681,12 @@ class SERApp {
 
         // Sort emotions by probability
         const sortedEmotions = Object.entries(emotions)
-            .sort(([,a], [,b]) => b - a);
+            .sort(([, a], [, b]) => b - a);
 
         sortedEmotions.forEach(([emotion, probability]) => {
             const item = document.createElement('div');
             item.className = 'probability-item';
-            
+
             item.innerHTML = `
                 <span class="emotion-name">${emotion.charAt(0).toUpperCase() + emotion.slice(1)}</span>
                 <div class="probability-bar">
@@ -675,7 +694,7 @@ class SERApp {
                 </div>
                 <span class="probability-value">${Math.round(probability * 100)}%</span>
             `;
-            
+
             container.appendChild(item);
         });
     }
@@ -696,7 +715,7 @@ class SERApp {
         if (!canvas) return;
 
         const ctx = canvas.getContext('2d');
-        
+
         this.emotionChart = new Chart(ctx, {
             type: 'doughnut',
             data: {
@@ -721,7 +740,7 @@ class SERApp {
                     },
                     tooltip: {
                         callbacks: {
-                            label: function(context) {
+                            label: function (context) {
                                 const label = context.label || '';
                                 const value = Math.round(context.parsed * 100);
                                 return `${label}: ${value}%`;
@@ -741,7 +760,7 @@ class SERApp {
         if (!canvas) return;
 
         const ctx = canvas.getContext('2d');
-        
+
         this.realtimeChart = new Chart(ctx, {
             type: 'line',
             data: {
@@ -792,12 +811,12 @@ class SERApp {
         const data = Object.values(emotions);
         const colors = labels.map(emotion => this.emotionColors[emotion] || '#667eea');
 
-        this.emotionChart.data.labels = labels.map(label => 
+        this.emotionChart.data.labels = labels.map(label =>
             label.charAt(0).toUpperCase() + label.slice(1)
         );
         this.emotionChart.data.datasets[0].data = data;
         this.emotionChart.data.datasets[0].backgroundColor = colors;
-        
+
         this.emotionChart.update();
     }
 
@@ -808,7 +827,7 @@ class SERApp {
         if (!this.realtimeChart || !data.emotions) return;
 
         const timestamp = new Date().toLocaleTimeString();
-        
+
         // Initialize datasets if empty
         if (this.realtimeChart.data.datasets.length === 0) {
             Object.keys(data.emotions).forEach(emotion => {
@@ -825,7 +844,7 @@ class SERApp {
 
         // Add new data point
         this.realtimeChart.data.labels.push(timestamp);
-        
+
         this.realtimeChart.data.datasets.forEach((dataset, index) => {
             const emotionName = Object.keys(data.emotions)[index];
             if (emotionName) {
@@ -851,7 +870,7 @@ class SERApp {
         const container = document.querySelector('.realtime-chart-container');
         if (container) {
             container.style.display = 'block';
-            
+
             // Clear existing data
             if (this.realtimeChart) {
                 this.realtimeChart.data.labels = [];
@@ -939,7 +958,7 @@ class SERApp {
     showLoading(message = 'Processing...') {
         const overlay = document.getElementById('loading-overlay');
         const text = document.getElementById('loading-text');
-        
+
         if (overlay) overlay.style.display = 'flex';
         if (text) text.textContent = message;
     }
@@ -958,10 +977,10 @@ class SERApp {
     showError(message) {
         const modal = document.getElementById('error-modal');
         const messageElement = document.getElementById('error-message');
-        
+
         if (messageElement) messageElement.textContent = message;
         if (modal) modal.style.display = 'flex';
-        
+
         console.error('Error:', message);
     }
 
@@ -980,11 +999,11 @@ class SERApp {
         if (this.audioRecorder) {
             this.audioRecorder.cleanup();
         }
-        
+
         if (this.emotionChart) {
             this.emotionChart.destroy();
         }
-        
+
         if (this.realtimeChart) {
             this.realtimeChart.destroy();
         }
@@ -995,7 +1014,7 @@ class SERApp {
 document.addEventListener('DOMContentLoaded', () => {
     const app = new SERApp();
     app.init();
-    
+
     // Cleanup on page unload
     window.addEventListener('beforeunload', () => {
         app.cleanup();

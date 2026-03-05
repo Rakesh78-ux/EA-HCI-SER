@@ -21,7 +21,8 @@ audio_processor = None
 @router.post("/predict/file")
 async def predict_from_file(
     file: UploadFile = File(...),
-    return_probabilities: bool = Form(True)
+    return_probabilities: bool = Form(True),
+    transcript: str = Form(None)
 ):
     """Predict emotion from uploaded audio file"""
     try:
@@ -46,7 +47,7 @@ async def predict_from_file(
         file_content = await file.read()
         
         # Process audio file
-        result = await process_audio_file(file_content, file_ext, return_probabilities)
+        result = await process_audio_file(file_content, file_ext, return_probabilities, transcript=transcript)
 
         # Log full prediction for debugging
         try:
@@ -184,7 +185,7 @@ async def health_check():
             content={"status": "unhealthy", "message": str(e)}
         )
 
-async def process_audio_file(file_content: bytes, file_ext: str, return_probabilities: bool = True) -> dict:
+async def process_audio_file(file_content: bytes, file_ext: str, return_probabilities: bool = True, transcript: str = "") -> dict:
     """Process uploaded audio file and return emotion prediction"""
     try:
         # Import global instances
@@ -230,7 +231,7 @@ async def process_audio_file(file_content: bytes, file_ext: str, return_probabil
             processed_audio = audio_processor.preprocess_audio(audio_data, sample_rate)
             
             # Get prediction
-            prediction = emotion_classifier.predict(processed_audio, sample_rate)
+            prediction = emotion_classifier.predict(processed_audio, sample_rate, transcript=transcript)
             
             # Format response
             response = {

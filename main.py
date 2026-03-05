@@ -60,24 +60,34 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     logger.info("WebSocket connection established")
     
+    current_transcript = ""
+
     try:
         while True:
-            # Receive audio data from client
-            data = await websocket.receive_bytes()
+            # Receive data (can be text for transcript or bytes for audio)
+            message = await websocket.receive()
             
             try:
-                # Process audio data
-                audio_array = np.frombuffer(data, dtype=np.float32)
+                msg_text = message.get("text")
+                msg_bytes = message.get("bytes")
                 
-                if len(audio_array) > 0:
-                    # Process and predict emotion
-                    prediction = await process_audio_stream(audio_array)
+                if msg_text is not None:
+                    # Append or replace the current transcript context
+                    current_transcript = msg_text
+                    logger.debug(f"WebSocket received transcript update: {msg_text}")
+                    continue
                     
-                    # Send prediction back to client
-                    await manager.send_personal_message(
-                        json.dumps(prediction), websocket
-                    )
+                elif msg_bytes is not None:
+                    # Process audio data, passing along the transcript context
+                    audio_array = np.frombuffer(msg_bytes, dtype=np.float32)
                     
+                    if len(audio_array) > 0:
+                        prediction = await process_audio_stream(audio_array, current_transcript)
+                        
+                        await manager.send_personal_message(
+                            json.dumps(prediction), websocket
+                        )
+                        
             except Exception as e:
                 logger.error(f"Error processing audio stream: {str(e)}")
                 error_response = {
@@ -95,7 +105,7 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket error: {str(e)}")
         manager.disconnect(websocket)
 
-async def process_audio_stream(audio_data: np.ndarray) -> dict:
+async def process_audio_stream(audio_data: np.ndarray, transcript: str = "") -> dict:
     """Process streaming audio data and return emotion prediction"""
     try:
         # Ensure minimum audio length for processing
@@ -110,8 +120,8 @@ async def process_audio_stream(audio_data: np.ndarray) -> dict:
         # Process audio and extract features
         processed_audio = audio_processor.preprocess_audio(audio_data, settings.SAMPLE_RATE)
         
-        # Get emotion prediction
-        prediction = emotion_classifier.predict(processed_audio, settings.SAMPLE_RATE)
+        # Get emotion prediction passing transcript
+        prediction = emotion_classifier.predict(processed_audio, settings.SAMPLE_RATE, transcript=transcript)
         
         return prediction
         

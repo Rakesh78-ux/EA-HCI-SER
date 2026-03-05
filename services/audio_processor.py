@@ -2,8 +2,9 @@ import numpy as np
 import librosa
 import logging
 from typing import Optional, Tuple
-from pydub import AudioSegment
+import imageio_ffmpeg
 import io
+import subprocess
 import tempfile
 import os
 
@@ -23,12 +24,31 @@ class AudioProcessor:
     def load_audio_file(self, file_path: str) -> Optional[Tuple[np.ndarray, int]]:
         """Load audio file and return audio data with sample rate"""
         try:
+            file_path_to_load = file_path
+            if file_path.lower().endswith((".webm", ".ogg", ".mp3", ".m4a")):
+                try:
+                    ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as wav_tmp:
+                        # Call ffmpeg directly
+                        subprocess.run([
+                            ffmpeg_exe, "-y", "-i", file_path,
+                            "-ar", "22050", "-ac", "1",
+                            wav_tmp.name
+                        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        file_path_to_load = wav_tmp.name
+                except Exception as e:
+                    logger.error(f"FFmpeg subprocess conversion failed: {e}")
+            
             # Load audio using librosa
             audio_data, sample_rate = librosa.load(
-                file_path,
+                file_path_to_load,
                 sr=None,  # Keep original sample rate initially
                 mono=True
             )
+
+            # Cleanup
+            if file_path_to_load != file_path and os.path.exists(file_path_to_load):
+                os.unlink(file_path_to_load)
 
             logger.info(f"Loaded audio file: {file_path}, shape: {audio_data.shape}, sr: {sample_rate}")
             return audio_data, sample_rate

@@ -3,7 +3,7 @@ import requests, os, json
 from collections import Counter, defaultdict
 from pathlib import Path
 
-API = "http://127.0.0.1:8001/api/predict/file"
+API = "http://127.0.0.1:3000/api/predict/file"
 WAV_DIR = Path("test_wavs")  # put many test wavs here
 LABEL_NEUTRAL = "neutral"
 

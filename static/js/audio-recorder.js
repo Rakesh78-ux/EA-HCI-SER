@@ -13,15 +13,15 @@ class AudioRecorder {
         this.isRecording = false;
         this.isStreaming = false;
         this.recordedChunks = [];
-        
+
         // WebSocket for real-time streaming
         this.websocket = null;
         this.streamProcessor = null;
-        
+
         // Audio processing settings
         this.sampleRate = 22050;
         this.bufferSize = 4096;
-        
+
         // Event callbacks
         this.onDataCallback = null;
         this.onLevelCallback = null;
@@ -53,7 +53,7 @@ class AudioRecorder {
             // Create analyser for audio level monitoring
             this.analyser = this.audioContext.createAnalyser();
             this.analyser.fftSize = 256;
-            
+
             // Connect microphone to analyser
             this.microphone = this.audioContext.createMediaStreamSource(this.stream);
             this.microphone.connect(this.analyser);
@@ -64,7 +64,7 @@ class AudioRecorder {
             });
 
             this.setupMediaRecorderEvents();
-            
+
             console.log('Audio recorder initialized successfully');
             return true;
 
@@ -111,7 +111,7 @@ class AudioRecorder {
                 const blob = new Blob(this.recordedChunks, {
                     type: this.mediaRecorder.mimeType
                 });
-                
+
                 if (this.onDataCallback) {
                     this.onDataCallback(blob);
                 }
@@ -138,10 +138,10 @@ class AudioRecorder {
             this.recordedChunks = [];
             this.mediaRecorder.start(100); // Collect data every 100ms
             this.isRecording = true;
-            
+
             // Start audio level monitoring
             this.startLevelMonitoring();
-            
+
             console.log('Recording started');
             return true;
 
@@ -162,10 +162,10 @@ class AudioRecorder {
             if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
                 this.mediaRecorder.stop();
                 this.isRecording = false;
-                
+
                 // Stop audio level monitoring
                 this.stopLevelMonitoring();
-                
+
                 console.log('Recording stopped');
                 return true;
             }
@@ -191,14 +191,14 @@ class AudioRecorder {
 
             // Connect WebSocket
             await this.connectWebSocket();
-            
+
             if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
                 throw new Error('WebSocket connection failed');
             }
 
             // Create audio processor for streaming
             this.createStreamProcessor();
-            
+
             this.isStreaming = true;
             console.log('Audio streaming started');
             return true;
@@ -218,18 +218,18 @@ class AudioRecorder {
     stopStreaming() {
         try {
             this.isStreaming = false;
-            
+
             // Disconnect audio processor
             if (this.streamProcessor) {
                 this.streamProcessor.disconnect();
                 this.streamProcessor = null;
             }
-            
+
             // Close WebSocket
             if (this.websocket && this.websocket.readyState === WebSocket.OPEN) {
                 this.websocket.close();
             }
-            
+
             console.log('Audio streaming stopped');
             return true;
 
@@ -247,14 +247,14 @@ class AudioRecorder {
             try {
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const wsUrl = `${protocol}//${window.location.host}/ws/audio`;
-                
+
                 this.websocket = new WebSocket(wsUrl);
-                
+
                 this.websocket.onopen = () => {
                     console.log('WebSocket connected');
                     resolve();
                 };
-                
+
                 this.websocket.onmessage = (event) => {
                     try {
                         const data = JSON.parse(event.data);
@@ -265,17 +265,17 @@ class AudioRecorder {
                         console.error('Error parsing WebSocket message:', error);
                     }
                 };
-                
+
                 this.websocket.onerror = (error) => {
                     console.error('WebSocket error:', error);
                     reject(error);
                 };
-                
+
                 this.websocket.onclose = (event) => {
                     console.log('WebSocket disconnected:', event.code, event.reason);
                     this.isStreaming = false;
                 };
-                
+
                 // Timeout for connection
                 setTimeout(() => {
                     if (this.websocket.readyState !== WebSocket.OPEN) {
@@ -297,18 +297,18 @@ class AudioRecorder {
             // Use ScriptProcessorNode for older browsers or AudioWorklet for modern browsers
             if (this.audioContext.createScriptProcessor) {
                 this.streamProcessor = this.audioContext.createScriptProcessor(this.bufferSize, 1, 1);
-                
+
                 this.streamProcessor.onaudioprocess = (event) => {
                     if (!this.isStreaming) return;
-                    
+
                     const inputBuffer = event.inputBuffer.getChannelData(0);
                     this.sendAudioData(inputBuffer);
                 };
-                
+
                 // Connect to audio graph
                 this.microphone.connect(this.streamProcessor);
                 this.streamProcessor.connect(this.audioContext.destination);
-                
+
             } else {
                 // Fallback for browsers without ScriptProcessorNode
                 console.warn('ScriptProcessorNode not supported, using fallback method');
@@ -330,11 +330,11 @@ class AudioRecorder {
         });
 
         let streamChunks = [];
-        
+
         mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0 && this.isStreaming) {
                 streamChunks.push(event.data);
-                
+
                 // Send accumulated chunks every few data events
                 if (streamChunks.length >= 3) {
                     const blob = new Blob(streamChunks, { type: mediaRecorder.mimeType });
@@ -362,7 +362,7 @@ class AudioRecorder {
                 audioData.byteOffset,
                 audioData.byteOffset + audioData.byteLength
             );
-            
+
             this.websocket.send(buffer);
 
         } catch (error) {
@@ -388,18 +388,34 @@ class AudioRecorder {
     }
 
     /**
+     * Send video or audio transcript via WebSocket
+     */
+    sendTranscript(text) {
+        if (!this.websocket || this.websocket.readyState !== WebSocket.OPEN) {
+            return;
+        }
+
+        try {
+            const payload = JSON.stringify({ text: text });
+            this.websocket.send(payload);
+        } catch (error) {
+            console.error('Error sending transcript text:', error);
+        }
+    }
+
+    /**
      * Start monitoring audio levels for visual feedback
      */
     startLevelMonitoring() {
         if (!this.analyser) return;
 
         const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-        
+
         const updateLevel = () => {
             if (!this.isRecording && !this.isStreaming) return;
-            
+
             this.analyser.getByteFrequencyData(dataArray);
-            
+
             // Calculate average volume level
             let sum = 0;
             for (let i = 0; i < dataArray.length; i++) {
@@ -407,15 +423,15 @@ class AudioRecorder {
             }
             const average = sum / dataArray.length;
             const level = average / 255; // Normalize to 0-1
-            
+
             if (this.onLevelCallback) {
                 this.onLevelCallback(level);
             }
-            
+
             // Continue monitoring
             requestAnimationFrame(updateLevel);
         };
-        
+
         updateLevel();
     }
 
@@ -461,23 +477,23 @@ class AudioRecorder {
         try {
             this.stopRecording();
             this.stopStreaming();
-            
+
             if (this.streamProcessor) {
                 this.streamProcessor.disconnect();
             }
-            
+
             if (this.microphone) {
                 this.microphone.disconnect();
             }
-            
+
             if (this.stream) {
                 this.stream.getTracks().forEach(track => track.stop());
             }
-            
+
             if (this.audioContext && this.audioContext.state !== 'closed') {
                 this.audioContext.close();
             }
-            
+
             console.log('Audio recorder cleaned up');
 
         } catch (error) {

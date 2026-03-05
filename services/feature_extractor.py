@@ -241,7 +241,7 @@ class FeatureExtractor:
             tempo, beats = librosa.beat.beat_track(
                 y=audio_data, sr=sample_rate, hop_length=settings.HOP_LENGTH
             )
-            rhythm_features.append(tempo)
+            rhythm_features.append(float(np.mean(tempo)))
             
             # Beat strength
             onset_strength = librosa.onset.onset_strength(
